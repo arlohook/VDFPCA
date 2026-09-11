@@ -2,14 +2,14 @@ library(mgcv)
 
 dvfpca_grassmann <- function(m,
                              X,
-                             K            = 2,
-                             h_pct        = 0.1,
-                             base_step    = 1,
-                             M            = 100,
-                             cov.est      = "raw",
-                             mean_basis   = list(bs = c("tp", "tp"),
-                                                 k  = c(10, 10),
-                                                 m  = c(2, 2))) {
+                             K = 2,
+                             h_pct = 0.1,
+                             base_step = 1,
+                             M = 100,
+                             cov.est = "raw",
+                             mean_basis = list(bs = c("tp", "tp"),
+                                               k  = c(10, 10),
+                                               m  = c(2, 2))) {
   
   n  <- length(m)
   Tn <- nrow(X)
@@ -67,14 +67,19 @@ dvfpca_grassmann <- function(m,
   }
   
   ## 4. Grassmann smoothing helpers
-  smooth_one_direction <- function(Phi_list, base_step) {
+  smooth_one_direction <- function(Phi_list, base_step, lambda_m) {
     M <- length(Phi_list)
     K <- ncol(Phi_list[[1]])
     Phi_sm <- Phi_list
     for (l in 1:(M - 1)) {
       A <- Phi_sm[[l]]
       B <- Phi_list[[l + 1]]
-      S <- t(A) %*% B
+      
+      w <- lambda_m[l + 1, ]
+      w <- w / sum(w)
+      W <- diag(w)
+      
+      S <- t(A) %*% B %*% W
       sv <- svd(S)
       d  <- pmin(pmax(sv$d, -1), 1)
       theta <- acos(d)
@@ -109,8 +114,8 @@ dvfpca_grassmann <- function(m,
   }
   
   ## 5. Forward + backward Grassmann smoothing + midpoint
-  Phi_f <- smooth_one_direction(Phi_raw, base_step = base_step)
-  Phi_b <- rev(smooth_one_direction(rev(Phi_raw), base_step = base_step))
+  Phi_f <- smooth_one_direction(Phi_raw, base_step = base_step, lambda_m = lambda_m)
+  Phi_b <- rev(smooth_one_direction(rev(Phi_raw), base_step = base_step, lambda_m = lambda_m))
   Phi_sm <- geodesic_midpoint(Phi_f, Phi_b)
   
   ## 6. Expand and Orthonormalise
