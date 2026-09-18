@@ -7,42 +7,42 @@ library(pracma)
 library(patchwork)
 
 
-source("make.data.R")
-source("eval.EF.R")
-source("eval.EF.grid.R")
-source("dvfpca_grassmann.R")
-source("dvfpca_tpb.R")
+source("./Functions/make.data.R")
+source("./Functions/eval.EF.R")
+source("./Functions/eval.EF.grid.R")
+source("./Functions/dvfpca_ker.R")
+source("./Functions/dvfpca_tpb.R")
 
-# make data based on Uniform NL Scenario from Johns 2019 paper
-D = make.data(N = 50, e.sig = 0.01)
+# make data 
+D = make.data(N = 500, e.sig = 0.01, case = 2)
 
 # Estimate
-tCGr = system.time({
-test = dvfpca_grassmann(m = D$mi, 
-                        X = D$X, 
-                        K = 2, 
-                        base_step = 0.5, 
-                        h_pct = 0.1, 
-                        M = 100, 
-                        cov.est = 'face')
+tC = system.time({
+test = dvfpca_ker(m = D$mi, 
+                  X = D$X, 
+                  K = 10, 
+                  h_pct = 0.1, 
+                  M = 100, 
+                  naivepve = 0.995, 
+                  cov.est = 'face')
 })
 
 tCTPB = system.time({
 test2 = dvfpca_tpb(m = D$mi, 
-                  X = D$X, 
-                  K = 2, 
-                  M = 100,
-                  covtpb.k = c(10,10,10))
+                   X = D$X, 
+                   K = 10, 
+                   M = 100,
+                   covtpb.k = 100)
 
 })
 
-cat(paste0("Grassman time = ", round(tCGr['elapsed'], 2), " seconds \n",
+cat(paste0("Fast time = ", round(tC['elapsed'], 2), " seconds \n",
              "TPB time = ", round(tCTPB['elapsed'], 2), " seconds"))
 
 
 # Plot Eigenfunction k
 
-k = 1
+k = 2
 
 est = ggplot(filter(test$eig_df, pc == k), aes(x = t, y = m, colour = value))+
         geom_point()+
@@ -57,7 +57,7 @@ est2 = ggplot(filter(test2$eig_df, pc == k), aes(x = t, y = m, colour = value))+
   scale_colour_gradient(limits = c(-1,1))
 
 
-truedf = eval.EF.grid(k = k, m_grid = test$m_grid)
+truedf = eval.EF.grid(k = k, m_grid = test$m_grid, case = 2)
 
 true = ggplot(truedf, aes(x = t, y = m, colour = value))+
   geom_point()+
@@ -96,7 +96,7 @@ plot(s, y, main = paste0("PC",k, " at m = ", round(M[l],2)), col = "red", type =
   lines(s, y2, col = "blue", type = 'l')+
   legend(
     "bottomright",
-    legend = c("True", "Grassmann", "TPB"),
+    legend = c("True", "Kernel", "TPB"),
     col    = c("black", "red", "blue"),
     lwd    = 2,
     bty    = "n"
@@ -105,7 +105,7 @@ plot(s, y, main = paste0("PC",k, " at m = ", round(M[l],2)), col = "red", type =
 
 # look at reconstruction
 par(mfrow = c(1,3))
-matplot(test$recon, type = 'l', main = "Grassmann Estimate")
+matplot(test$recon, type = 'l', main = "Kernel Estimate")
 matplot(test2$recon, type = 'l', main = "TPB Estimate")
 matplot(D$X, type = 'l', , main = "True")
 

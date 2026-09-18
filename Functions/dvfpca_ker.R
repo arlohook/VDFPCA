@@ -1,21 +1,21 @@
 library(mgcv)
-library(dplyr)
 
-dvfpca_tpb <- function(m,
-                       X,
-                       K = 2,
-                       M = 100,
-                       covtpb.k = c(10,10,10),
-                       mean_basis   = list(bs = c("tp", "tp"),
-                                           k  = c(10, 10),
-                                           m  = c(2, 2))) {
+dvfpca_ker <- function(m,
+                             X,
+                             K = 2,
+                             h_pct = 0.1,
+                             M = 100,
+                             naivepve = 0.995,
+                             cov.est = "raw",
+                             mean_basis = list(bs = c("tp", "tp"),
+                                               k  = c(10, 10),
+                                               m  = c(2, 2))) {
   
   n  <- length(m)
   Tn <- nrow(X)
   
   ## 1. Estimate mean function mu(m,t) via tensor-product spline (bam)
   df_long <- data.frame(
-    i = rep(1:n, each = Tn),
     y = as.vector(X),
     t = c(unlist(sapply(m, function(l){seq(0,l, length = Tn)}))),
     m = rep(m, each = Tn)
@@ -32,63 +32,66 @@ dvfpca_tpb <- function(m,
   mu_mat <- matrix(df_pred$y_hat, nrow = Tn, ncol = n)
   
   
-  ## 2. Extract residuals and make covariance dataframe
+  ## residuals
   X_res <- X - mu_mat
-  resdf = data.frame(i = rep(1:n, each = Tn),
-                     m = rep(m, each = Tn),
-                     t = c(unlist(sapply(m, function(l){seq(0,l, length = Tn)}))),
-                     res = as.vector(X_res))
+  Xsc = t(X_res)
+  #FACE
+  if(cov.est == "face"){
+  ## smooth onto low rank eigenbasis
   
-  covdf = do.call(rbind, lapply(1:n, function(i){
-    
-    t = seq(0,m[i], length = Tn)
-    data.frame(m = m[i],
-               s = rep(t, each = Tn),
-               t = rep(t, Tn),
-               z = as.vector(tcrossprod(X_res[,i])))
-    
-    
-  }))
-  
-  
-  ## 3. Estimate C(m,s,t) via Tensor Product Smooth
-  
-  covSm <- bam(
-    z ~ te(t, s, m, bs = "tp", k = covtpb.k), discrete = T,
-    data   = covdf
-  )
-  
-  # 4. Estimate eigenfunctions at M distinct points
-  
-  Phi_sm = vector('list', M)
-  lambda_m  <- matrix(NA, nrow = M, ncol = K)
+  pcaX = eigen(t(Xsc) %*% Xsc)
+  Xk = which(cumsum(pcaX$values/sum(pcaX$values)) > naivepve)[1]
+  if(Xk < K){
+    K = Xk
+    message(paste0("Number of basis retained by naive FPCA less than specified K.\n Using K = ", Xk, " instead" ))
+    }
+  Xb = pcaX$vectors[,1:Xk]
+  Xsc =  Xsc %*% Xb
+  }
+  ## 2. Kernel grid over m
   m_range <- range(m)
   m_grid  <- seq(m_range[1], m_range[2], length.out = M)
+  h       <- h_pct * diff(m_range)
+  
+  ## 3. Weighted covariance + eigen decomposition
+  Phi_sm   <- vector("list", M)
+  lambda_m  <- matrix(NA, nrow = M, ncol = K)
   
   for (l in seq_len(M)) {
-    t = seq(0,m_grid[l], length = Tn)
+    w_l <- dnorm((m - m_grid[l]) / h)
+    if (sum(w_l) == 0) w_l <- rep(1, n)
+    w_l <- w_l / sum(w_l)
+    W_l <- diag(w_l)
     
-    # estimate
-    C_l <- matrix(predict(covSm, newdata = data.frame(m = m_grid[l],
-                                                      s = rep(t, each = Tn),
-                                                      t = rep(t, Tn))),Tn, Tn)
-    # decompose
+    C_l <- t(Xsc) %*% W_l %*% Xsc
+    
     eig_l <- eigen(C_l, symmetric = TRUE)
+    Phi_sm[[l]]  <- eig_l$vectors[, 1:K, drop = FALSE]
+    lambda_m[l, ] <- eig_l$values[1:K]
+  }
+  
+ 
+  ## 6. Expand and Orthonormalise
+  
+  
+  Phi_sm = lapply(1:M, function(l){
     
-    #orthonormalise
-    P  <- eig_l$vectors[, 1:K, drop = FALSE]
+    if(cov.est == 'face'){
+    P =  Xb %*% Phi_sm[[l]]
+    }else{
+      P = Phi_sm[[l]]
+    }
+    t = seq(0,m_grid[l], length = Tn)
     W = diag(rep(t[2], Tn))
     G = t(P)%*%W%*%P
     L2 = diag(G)
     scale = 1/sqrt(L2)
     
-    # store
-    Phi_sm[[l]] = sweep(P, 2, scale, "*")
-    lambda_m[l, ] <- eig_l$values[1:K]
-  }
+    sweep(P, 2, scale, "*")
+    
+  })
   
-  
-  ## 5. Mean function output on (m_grid, t_grid)
+  ## 7. Mean function output on (m_grid, t_grid)
   mean_grid_df <- data.frame(
     m = rep(m_grid, Tn),
     t = c(unlist(sapply(m_grid, function(l){seq(0,l, length = Tn)})))
@@ -102,7 +105,7 @@ dvfpca_tpb <- function(m,
     )
   )
   
-  ## 6. Eigenfunction output as data frame
+  ## 8. Eigenfunction output as data frame
   eig_df_list <- vector("list", K)
   for (k in seq_len(K)) {
     vals <- do.call(cbind, lapply(Phi_sm, function(Phi) Phi[, k]))
@@ -116,28 +119,7 @@ dvfpca_tpb <- function(m,
   eig_df <- do.call(rbind, eig_df_list)
  
   
-  ## 7. Scores for each observation + reconstruction
-  
-  geodesic_midpoint <- function(Phi_f, Phi_b, stp = NULL) {
-    M <- length(Phi_f)
-    if(is.null(stp)){stp = rep(0.5,M)}
-    K <- ncol(Phi_f[[1]])
-    Phi_mid <- Phi_f
-    for (l in seq_len(M)) {
-      A <- Phi_f[[l]]
-      B <- Phi_b[[l]]
-      S <- t(A) %*% B
-      sv <- svd(S)
-      d  <- pmin(pmax(sv$d, -1), 1)
-      theta <- acos(d)
-      A1 <- diag(cos(stp[l] * theta))
-      A2 <- diag(sin(stp[l] * theta))
-      G  <- A %*% sv$u %*% A1 + B %*% sv$v %*% A2
-      Phi_mid[[l]] <- qr.Q(qr(G))[, 1:K, drop = FALSE]
-    }
-    Phi_mid
-  }
-  
+  ## 9. Scores for each observation + reconstruction
   ref_df = data.frame(m = m,
                       lower = findInterval(m, m_grid))
   ref_df$upper = ifelse(ref_df$lower + 1 > M, M, ref_df$lower + 1)
@@ -147,7 +129,25 @@ dvfpca_tpb <- function(m,
   scores = matrix(NA, n, K)
   recon = matrix(NA, Tn, n)
   
-  Phi_mi = geodesic_midpoint(Phi_sm[ref_df$lower], Phi_sm[ref_df$upper], stp = ref_df$step)
+  Phi_mi <- lapply(seq_len(n), function(i) {
+    l  <- ref_df$lower[i]
+    u  <- ref_df$upper[i]
+    a  <- ref_df$step[i]
+    
+    Phi_l <- Phi_sm[[l]]
+    Phi_u <- Phi_sm[[u]]
+    
+    # columnwise linear interpolation
+    Phi_i <- (1 - a) * Phi_l + a * Phi_u
+    
+    # now L2-normalise on [0, m[i]]
+    t  <- seq(0, ref_df$m[i], length = Tn)
+    W  <- diag(rep(t[2], Tn))
+    G  <- t(Phi_i) %*% W %*% Phi_i
+    scale <- 1 / sqrt(diag(G))
+    
+    sweep(Phi_i, 2, scale, "*")
+  })
   
   for(i in 1:n){
     

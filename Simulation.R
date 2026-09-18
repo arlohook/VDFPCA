@@ -8,18 +8,20 @@ library(pracma)
 library(future)
 library(future.apply)
 
-source("make.data.R")
-source("eval.EF.R")
-source("eval.EF.grid.R")
-source("ARMSE_ef.R")
-source("dvfpca_grassmann.R")
-source("dvfpca_tpb.R")
+source("./Functions/make.data.R")
+source("./Functions/eval.EF.R")
+source("./Functions/eval.EF.grid.R")
+source("./Functions/ARMSE_ef.R")
+source("./Functions/dvfpca_ker.R")
+source("./Functions/dvfpca_tpb.R")
 # make data
 
 
 NSIM = 500
+Method = "TPB"
+Case = 2
 N = 100
-SIG = 0.01
+SIG = 1
 
 set.seed(2026)
 
@@ -30,29 +32,33 @@ data.list = lapply(seeds, function(s){
   
   set.seed(s)
   
-  make.data(N = N, e.sig = SIG)
+  make.data(N = N, e.sig = SIG, case = Case)
   
 })
 
-plan("multisession", workers = 5)
+plan("multisession", workers = 10)
 
 RESULTS = do.call(rbind, future_lapply(data.list, function(D){
   
   # fit   
   tC = system.time({
-    # test = dvfpca_grassmann(m = D$mi, 
-    #                         X = D$X, 
-    #                         K = 10, 
-    #                         base_step = 0.5, 
-    #                         h_pct = 0.1, 
-    #                         M = 100, 
-    #                         cov.est = 'face')
     
-    test = dvfpca_tpb(m = D$mi, 
-                       X = D$X, 
-                       K = 10, 
-                       M = 100,
-                       covtpb.k = c(5,5,5))
+    if(Method == "Ker"){
+      test = dvfpca_ker(m = D$mi, 
+                              X = D$X, 
+                              K = 10, 
+                              h_pct = 0.1, 
+                              M = 100, 
+                              cov.est = 'face')
+    }
+    
+    if(Method == "TPB"){
+     test = dvfpca_tpb(m = D$mi, 
+                        X = D$X, 
+                        K = 10, 
+                        M = 100,
+                        covtpb.k = 100)
+    }
   })
     
   # get ARMSE functions 
@@ -60,11 +66,14 @@ RESULTS = do.call(rbind, future_lapply(data.list, function(D){
   Ye = sum((test$recon-D$X)^2)/N/nrow(test$recon)
   
   
-    c(Ye, ARMSE_ef(test$eig_df), tC['elapsed'])
+    c(Ye, MSE_ef(test$eig_df, case = Case), tC['elapsed'])
 }, future.seed = T))
 
+plan(sequential)
 
 colnames(RESULTS) = c("X", "E1", "E2", "TC")
 
-saveRDS(RESULTS, file = "TPB N100 Sig0.01.rds")
+fname = paste0("./Results/Case ", Case, " ", Method, " N", N, " Sig", SIG, ".rds")
+
+saveRDS(RESULTS, file = fname)
 
