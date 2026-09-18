@@ -6,7 +6,7 @@ dvfpca_ker <- function(m,
                              h_pct = 0.1,
                              M = 100,
                              naivepve = 0.995,
-                             cov.est = "raw",
+                             cov.est = "face",
                              mean_basis = list(bs = c("tp", "tp"),
                                                k  = c(10, 10),
                                                m  = c(2, 2))) {
@@ -40,13 +40,29 @@ dvfpca_ker <- function(m,
   ## smooth onto low rank eigenbasis
   
   pcaX = eigen(t(Xsc) %*% Xsc)
-  Xk = which(cumsum(pcaX$values/sum(pcaX$values)) > naivepve)[1]
+  
+  Xb = pcaX$vectors
+  Xsc =  Xsc %*% Xb
+  SS = apply(X_res, 2, function(i){sum(i^2)})
+  
+  Xk = which(sapply(1:Tn, function(k){
+    
+    Xh = Xb[,1:k] %*% t(Xsc[,1:k])
+    
+    RS = sapply(1:n, function(i){sum((Xh[,i]-X_res[,i])^2)})
+    
+    VX = 1 - (RS/SS)
+    
+    sum(VX > naivepve)/n
+    
+  }) > naivepve)[1]
+  
   if(Xk < K){
     K = Xk
     message(paste0("Number of basis retained by naive FPCA less than specified K.\n Using K = ", Xk, " instead" ))
     }
-  Xb = pcaX$vectors[,1:Xk]
-  Xsc =  Xsc %*% Xb
+  Xb = Xb[,1:Xk]
+  Xsc =  Xsc[,1:Xk]
   }
   ## 2. Kernel grid over m
   m_range <- range(m)
