@@ -113,16 +113,18 @@ matplot(D$X, type = 'l', , main = "True")
 
 # Check what basis sixe is sufficient for TPB
 
-sigma_case1 = diag(0.5^(0:9))
-sigma_case2 = diag(0.8^(0:9))
+NK = 2 # this is just used to see if generating data from a simpler covariance structure makes the required k smaller
+
+sigma_case1 = diag(0.5^(0:(NK-1)))
+sigma_case2 = diag(0.8^(0:(NK-1)))
 
 mgrid1 = seq(2, 80, length = 50)
 mgrid2 = seq(20,80, length = 50)
 
-EF_case1 = do.call(rbind, lapply(1:10, function(k){
+EF_case1 = do.call(rbind, lapply(1:NK, function(k){
   eval.EF.grid(k = k, m_grid = mgrid1, case = 1, Tn = 101)}))
 
-EF_case2 = do.call(rbind, lapply(1:10, function(k){
+EF_case2 = do.call(rbind, lapply(1:NK, function(k){
   eval.EF.grid(k = k, m_grid = mgrid2, case = 2, Tn = 101)}))
 
 Cmst_case1 = EF_case1 %>% group_by(m) %>% group_split() %>% lapply(function(df){
@@ -160,8 +162,9 @@ Cmst_case2 = do.call(rbind, lapply(1:50, function(l){
   
 }))
 
-
-mod1 = bam(z ~ s(s,t,m, bs = 'tp', k = 1000), data = Cmst_case1, discrete = T)
+# play with changing k and the subsequent EDF
+mod1 = bam(z ~ s(s,t,m, bs = 'tp', k = 5000), data = Cmst_case1, discrete = T)
+gam.check(mod1)
 summary(mod1)
 
 inc = mgrid1[seq(1,50,10)]
