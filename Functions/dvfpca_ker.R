@@ -109,7 +109,7 @@ dvfpca_ker <- function(m,
   
   ## 7. Mean function output on (m_grid, t_grid)
   mean_grid_df <- data.frame(
-    m = rep(m_grid, Tn),
+    m = rep(m_grid, each = Tn),
     t = c(unlist(sapply(m_grid, function(l){seq(0,l, length = Tn)})))
   )
   mean_grid_df$value <- predict(

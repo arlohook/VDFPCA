@@ -3,6 +3,4 @@
 .RData
 .Ruserdata
 /Data/*
-!/Data/.gitkeep
-Case 1 EigenFunctions.jpg
-Case 2 EigenFunctions.jpg
+!/Data/cmj_dataset_noarms.npz
