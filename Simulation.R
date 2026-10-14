@@ -8,33 +8,23 @@ library(pracma)
 library(future)
 library(future.apply)
 
-source("./Functions/make.data.R")
 source("./Functions/eval.EF.R")
 source("./Functions/eval.EF.grid.R")
-source("./Functions/ARMSE_ef.R")
+source("./Functions/MSE_ef.R")
 source("./Functions/dvfpca_ker.R")
 source("./Functions/dvfpca_tpb.R")
 # make data
 
 
 NSIM = 500
-Method = "TPB"
+Method = "Ker"
 Case = 2
-N = 100
+N = 500
 SIG = 1
 
-set.seed(2026)
+fn = paste0("./Data/Data - Case ", Case, " N", N, " Sig", SIG,".rds")
 
-seeds = sample(3000:5000, NSIM)
-
-
-data.list = lapply(seeds, function(s){
-  
-  set.seed(s)
-  
-  make.data(N = N, e.sig = SIG, case = Case)
-  
-})
+data.list = readRDS(fn)
 
 plan("multisession", workers = 10)
 
