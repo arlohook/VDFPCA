@@ -3,6 +3,6 @@
 .RData
 .Ruserdata
 /Data/*
-!path/to/folder/.gitkeep
+!/Data/.gitkeep
 Case 1 EigenFunctions.jpg
 Case 2 EigenFunctions.jpg
