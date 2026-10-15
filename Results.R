@@ -1,7 +1,7 @@
 library(tidyverse)
 library(kableExtra)
 
-Case = 2
+Case = 1
 
 KerLow100 = readRDS(paste0("./Results/Case ", Case, " Ker N100 Sig0.01.rds"))
 KerMid100 = readRDS(paste0("./Results/Case ", Case, " Ker N100 Sig0.1.rds"))

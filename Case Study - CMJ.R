@@ -5,7 +5,7 @@ library(reticulate)
 np <- import("numpy")
 source("./Functions/dvfpca_ker.R")
 
-# load data
+# load data (from https://zenodo.org/records/19136480?utm_source=copilot.com)
 data <- np$load("./Data/cmj_dataset_noarms.npz", allow_pickle = TRUE)
 GRF = data["grf_signals"]
 
