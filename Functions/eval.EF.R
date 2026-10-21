@@ -17,6 +17,7 @@ eval.EF = function(k, t, m, case = 1){
     out = scale * sin(2 * k * pi * t / m + alpha) 
     
   }
+
   
   out
 }

@@ -37,7 +37,6 @@ RESULTS = do.call(rbind, future_lapply(data.list, function(D){
       test = dvfpca_ker(m = D$mi, 
                               X = D$X, 
                               K = 10, 
-                              h_pct = 0.1, 
                               M = 100, 
                               cov.est = 'face')
     }

@@ -3,7 +3,7 @@ library(mgcv)
 dvfpca_ker <- function(m,
                              X,
                              K = 2,
-                             h_pct = 0.1,
+                             H = seq(0.05,0.5,0.05),
                              M = 100,
                              naivepve = 0.995,
                              cov.est = "face",
@@ -38,38 +38,68 @@ dvfpca_ker <- function(m,
   #FACE
   if(cov.est == "face"){
   ## smooth onto low rank eigenbasis
+    
+  pcaX = fpca.face(Y = Xsc, center = F, pve = naivepve)
+  Xb = pcaX$efunctions
+  Xsc = pcaX$scores
   
-  pcaX = eigen(t(Xsc) %*% Xsc)
-  
-  Xb = pcaX$vectors
-  Xsc =  Xsc %*% Xb
-  SS = apply(X_res, 2, function(i){sum(i^2)})
-  
-  Xk = which(sapply(1:Tn, function(k){
-    
-    Xh = Xb[,1:k] %*% t(Xsc[,1:k])
-    
-    RS = sapply(1:n, function(i){sum((Xh[,i]-X_res[,i])^2)})
-    
-    VX = 1 - (RS/SS)
-    
-    sum(VX > naivepve)/n
-    
-  }) > naivepve)[1]
-  
+  Xk = ncol(Xb)
   if(Xk < K){
     K = Xk
     message(paste0("Number of basis retained by naive FPCA less than specified K.\n Using K = ", Xk, " instead" ))
     }
-  Xb = Xb[,1:Xk]
-  Xsc =  Xsc[,1:Xk]
+  
   }
   ## 2. Kernel grid over m
   m_range <- range(m)
   m_grid  <- seq(m_range[1], m_range[2], length.out = M)
-  h       <- h_pct * diff(m_range)
+  Hp       <- H * diff(m_range)
   
-  ## 3. Weighted covariance + eigen decomposition
+  ## 3. CV for h
+  
+  R = matrix(NA, length(H), n)
+  
+  for(j in 1:length(H)){
+    
+    h = Hp[j]
+    
+    for(i in 1:n){
+      
+      Xtr = Xsc[-i,]
+      Xte = Xsc[i,]
+      mte = m[i]
+      mlow = findInterval(mte, m_grid)
+      mup = ifelse(mlow + 1 > M, M, mlow + 1)
+      
+      
+      w_low <- dnorm((m[-i] - m_grid[mlow]) / h)
+      if (sum(w_low) == 0) w_low <- rep(1, (n-1))
+      w_low <- w_low / sum(w_low)
+      W_low <- diag(w_low)
+      
+      w_up <- dnorm((m[-i] - m_grid[mup]) / h)
+      if (sum(w_up) == 0) w_up <- rep(1, (n-1))
+      w_up <- w_up / sum(w_up)
+      W_up <- diag(w_up)
+      
+      Vlow = eigen(t(Xtr) %*% W_low %*% Xtr)$vectors
+      Vup = eigen(t(Xtr) %*% W_up %*% Xtr)$vectors
+      
+      step = (mte-m_grid[mlow])/(m_grid[mup]-m_grid[mlow])
+      step = ifelse(is.na(step), 0, step)
+      
+      Vint = (1 - step) * Vlow + step * Vup
+      
+      Xhat = Xte %*%Vint%*%t(Vint)
+      
+      R[j,i] = sum((Xte-Xhat)^2)
+    }
+    
+  }
+  
+  h = Hp[which.min(rowSums(R))]
+  
+  ## 4. Weighted covariance + eigen decomposition
   Phi_sm   <- vector("list", M)
   lambda_m  <- matrix(NA, nrow = M, ncol = K)
   
@@ -87,7 +117,7 @@ dvfpca_ker <- function(m,
   }
   
  
-  ## 6. Expand and Orthonormalise
+  ## 5. Expand and Orthonormalise
   
   
   Phi_sm = lapply(1:M, function(l){
@@ -107,7 +137,7 @@ dvfpca_ker <- function(m,
     
   })
   
-  ## 7. Mean function output on (m_grid, t_grid)
+  ## 6. Mean function output on (m_grid, t_grid)
   mean_grid_df <- data.frame(
     m = rep(m_grid, each = Tn),
     t = c(unlist(sapply(m_grid, function(l){seq(0,l, length = Tn)})))
@@ -121,7 +151,7 @@ dvfpca_ker <- function(m,
     )
   )
   
-  ## 8. Eigenfunction output as data frame
+  ## 7. Eigenfunction output as data frame
   eig_df_list <- vector("list", K)
   for (k in seq_len(K)) {
     vals <- do.call(cbind, lapply(Phi_sm, function(Phi) Phi[, k]))
@@ -135,11 +165,11 @@ dvfpca_ker <- function(m,
   eig_df <- do.call(rbind, eig_df_list)
  
   
-  ## 9. Scores for each observation + reconstruction
+  ## 8. Scores for each observation + reconstruction
   ref_df = data.frame(m = m,
                       lower = findInterval(m, m_grid))
   ref_df$upper = ifelse(ref_df$lower + 1 > M, M, ref_df$lower + 1)
-  ref_df$step = step = (ref_df$m-m_grid[ref_df$lower])/(m_grid[ref_df$upper]-m_grid[ref_df$lower])
+  ref_df$step = (ref_df$m-m_grid[ref_df$lower])/(m_grid[ref_df$upper]-m_grid[ref_df$lower])
   ref_df$step = ifelse(is.na(ref_df$step), 0, ref_df$step)
   
   scores = matrix(NA, n, K)
@@ -198,6 +228,7 @@ dvfpca_ker <- function(m,
     scores       = scores,
     recon        = X_hat,
     lambda_df    = lambda_df,
-    m_grid       = m_grid
+    m_grid       = m_grid,
+    h = h
   )
 }

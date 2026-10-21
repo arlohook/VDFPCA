@@ -14,14 +14,14 @@ source("./Functions/dvfpca_ker.R")
 source("./Functions/dvfpca_tpb.R")
 
 # make data 
-D = make.data(N = 100, e.sig = 0, case = 2)
+case = 1
+D = make.data(N = 500, e.sig = 0.01, case = case)
 
 # Estimate
 tC = system.time({
 test = dvfpca_ker(m = D$mi, 
                   X = D$X, 
                   K = 10, 
-                  h_pct = 0.1, 
                   M = 100, 
                   naivepve = 0.995, 
                   cov.est = 'face')
@@ -47,7 +47,7 @@ k = 1
 est = ggplot(filter(test$eig_df, pc == k), aes(x = t, y = m, colour = value))+
         geom_point()+
         theme_light()+
-        labs(title = paste0("Grassmann Estimated PC",k))+
+        labs(title = paste0("Fast Estimated PC",k))+
         scale_colour_gradient(limits = c(-1,1))
 
 est2 = ggplot(filter(test2$eig_df, pc == k), aes(x = t, y = m, colour = value))+
@@ -57,7 +57,7 @@ est2 = ggplot(filter(test2$eig_df, pc == k), aes(x = t, y = m, colour = value))+
   scale_colour_gradient(limits = c(-1,1))
 
 
-truedf = eval.EF.grid(k = k, m_grid = test$m_grid, case = 2)
+truedf = eval.EF.grid(k = k, m_grid = test$m_grid, case = case)
 
 true = ggplot(truedf, aes(x = t, y = m, colour = value))+
   geom_point()+
